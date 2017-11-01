@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Tetris Game</title>
+<style>
+body {margin:0 auto;}
+</style>
+</head>
+<body>
+<canvas id="tetris" width="400" height="600"></canvas>
+<p><small>Controls: Left, Right, Down. Press Up arrow or X to rotate shape. Press P to pause/continue.</small></p>
+<p><small>License MIT (2017) Ahmad Retha. <a href="https://github.com/webmasterar/tetris">Back to Github</a>.
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    canv = document.getElementById('tetris');
+    ctx = canv.getContext('2d');
+    document.addEventListener('keyup', keyPush);
+    for (var i = 0; i < gridHeight/tileSize; i++) {
+        grid.push([]);
+        for (var j = 0; j < gridWidth/tileSize; j++) {
+            grid[i].push(0);
+        }
+    }
+    setInterval(game, 1000/10);
+});
+var FPS = 10;
+var FPScount = 0;
+var LEFT = 0, RIGHT = 1, DOWN = 2, TURN = -1;
+var STATE_PLAY = 0, STATE_PAUSED = 1, STATE_GAMEOVER = 2;
+var currState = STATE_PLAY;
+var COL = ['black', 'red', 'green', 'blue', 'purple', 'yellow', 'pink', 'orange'];
+var canv, ctx;
+var score = 0;
+var tileSize = 40;
+var gridWidth = 400;
+var gridWidthTiles = gridWidth/tileSize;
+var gridHeight = 600;
+var gridHeightTiles = gridHeight/tileSize;
+var grid = [];
+var shapeName = 0;
+var shapeId = 0;
+var shapes = {
+    line: [ [[0,1],
+             [0,1],
+             [0,1],
+             [0,1]],
+            [[1,1,1,1]]
+          ],
+    cube: [ [[2,2],
+             [2,2]]
+          ],
+    rhook: [ [[3,3,3],
+              [0,0,3]],
+             [[0,3,0],
+              [0,3,0],
+              [3,3,0]],
+             [[3,0,0],
+              [3,3,3]],
+             [[3,3,0],
+              [3,0,0],
+              [3,0,0]]
+           ],
+    lhook: [ [[4,4,4],
+              [4,0,0]],
+             [[4,4,0],
+              [0,4,0],
+              [0,4,0]],
+             [[0,0,4],
+              [4,4,4]],
+             [[0,4,0],
+              [0,4,0],
+              [0,4,4]]
+           ],
+    rstep: [ [[5,5,0],
+              [0,5,5]],
+             [[0,0,5],
+              [0,5,5],
+              [0,5,0]]
+           ],
+    lstep: [ [[0,6,6],
+              [6,6,0]],
+             [[6,0,0],
+              [6,6,0],
+              [0,6,0]]
+           ],
+    tri: [ [[0,7,0],
+            [7,7,7]],
+           [[0,7,0],
+            [0,7,7],
+            [0,7,0]],
+           [[7,7,7],
+            [0,7,0]],
+           [[0,7,0],
+            [7,7,0],
+            [0,7,0]]
+         ]
+};
+var gridXPos = 0;
+var gridYPos = 0;
+function march() {
+    if (collision(DOWN)) {
+        for (var row = 0; row < shapes[shapeName][shapeId].length; row++) {
+            for (var col = 0; col < shapes[shapeName][shapeId][0].length; col++) {
+                if (shapes[shapeName][shapeId][row][col] != 0) {
+                    grid[gridYPos+row][gridXPos+col] = shapes[shapeName][shapeId][row][col];
+                }
+            }
+        }
+        nextShape();
+    } else {
+        if (++FPScount % FPS == 0) {
+            gridYPos++;
+        }
+    }
+}
+function game() {
+    //pick a new shape
+    if (shapeName == 0) {
+        nextShape();
+    }
+
+    //game logic
+    if (currState == STATE_PLAY)
+    {
+        march();
+        clearFullLines();
+        checkGameover();
+    }
+
+    //draw arena
+    ctx.fillStyle = COL[0];
+    ctx.fillRect(0, 0, gridWidth, gridHeight);
+    
+    //draw score
+    ctx.font = '12px Consolas, Arial';
+    ctx.fillStyle = 'white';
+    ctx.fillText('Score: ' + score, 4, 16);
+
+    //draw grid
+    for (var row = 0; row < grid.length; row++) {
+        for (var col = 0; col < grid[0].length; col++) {
+            if (grid[row][col] != 0) {
+                ctx.fillStyle = COL[grid[row][col]];
+                ctx.fillRect(col * tileSize, row * tileSize, tileSize, tileSize);
+            }
+        }
+    }
+    
+    if (currState != STATE_GAMEOVER)
+    {
+        //draw shape
+        for (var row = gridYPos, i = 0; i < shapes[shapeName][shapeId].length; row++, i++) {
+            for (var col = gridXPos, j = 0; j < shapes[shapeName][shapeId][0].length; col++, j++) {
+                if (shapes[shapeName][shapeId][i][j] != 0) {
+                    ctx.fillStyle = COL[shapes[shapeName][shapeId][i][j]];
+                    ctx.fillRect(col * tileSize, row * tileSize, tileSize, tileSize);
+                }
+            }
+        }
+    }
+    
+    if (currState == STATE_GAMEOVER) {
+        ctx.font = '36px Consolas, Arial';
+        ctx.fillStyle = 'white';
+        ctx.fillText('-=GAME OVER=-', gridWidth/2 - 140, gridHeight/2);
+    }
+    else if (currState == STATE_PAUSED) {
+        ctx.font = '24px Consolas, Arial';
+        ctx.fillStyle = 'white';
+        ctx.fillText('-=PAUSED=-', gridWidth/2 - 75, gridHeight/2);
+    }
+}
+function keyPush(evt) {
+    switch (evt.keyCode) {
+        //X or up
+        case 38:
+        case 88:
+        case 120:
+            var prevShapeId = shapeId;
+            shapeId = ++shapeId % shapes[shapeName].length;
+            if (collision(TURN)) {
+                shapeId = prevShapeId;
+            }
+            break;
+        //left
+        case 37:
+            if (!collision(LEFT)) {
+                gridXPos--;
+            }
+            break;
+        //right
+        case 39:
+            if (!collision(RIGHT)) {
+                gridXPos = Math.min(gridXPos+1, gridWidthTiles - 1);
+            }
+            break;
+        //down
+        case 40:
+            if (!collision(DOWN)) {
+                gridYPos++;
+            }
+            break;
+        //pause/unpause
+        case 80:
+        case 112:
+            if (currState == STATE_PLAY) {
+                currState = STATE_PAUSED;
+            } else if (currState == STATE_PAUSED) {
+                currState = STATE_PLAY;
+            }
+            break;
+    };
+}
+function collision(moveDir) {
+    for (var row = 0; row < shapes[shapeName][shapeId].length; row++) {
+        for (var col = 0; col < shapes[shapeName][shapeId][row].length; col++) {
+            if (shapes[shapeName][shapeId][row][col] != 0) {
+                if (moveDir == LEFT) {
+                    if ((col-1+gridXPos) < 0 || grid[row+gridYPos][col-1+gridXPos] != 0) {
+                        return true;
+                    }
+                }
+                else if (moveDir == RIGHT) {
+                    if ((col+1+gridXPos) >= gridWidthTiles || grid[row+gridYPos][col+1+gridXPos] != 0) {
+                        return true;
+                    }
+                }
+                else if (moveDir == DOWN) {
+                    if ((row+1+gridYPos) >= gridHeightTiles || grid[row+1+gridYPos][gridXPos+col] != 0) {
+                        return true;
+                    }
+                }
+                if (grid[row+gridYPos][col+gridXPos] != 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+function clearFullLines() {
+    for (var row = gridHeightTiles - 1; row > -1; row--) {
+        var count = 0;
+        for (var col = 0; col < gridWidthTiles; col++) {
+            if (grid[row][col] != 0) {
+                count++;
+            }
+        }
+        if (count == gridWidthTiles) {
+            score += count;
+            grid.splice(row, 1);
+            var newRow = [];
+            for (var i = 0; i < gridWidthTiles; i++) {
+                newRow.push(0);
+            }
+            grid.unshift(newRow);
+        }
+    }
+}
+function nextShape() {
+    shapeName = Object.keys(shapes)[Math.floor(Math.random() * Object.keys(shapes).length)];
+    shapeId = 0;
+    gridXPos = (gridWidthTiles/2) - (Math.floor(shapes[shapeName][shapeId][0].length/2));
+    gridYPos = 0;
+}
+function checkGameover() {
+    for (var i = 0; i < gridWidthTiles; i++) {
+        if (grid[0][i] != 0) {
+            currState = STATE_GAMEOVER;
+            break;
+        }
+    }
+}
+</script>
+</body>
+</html>
